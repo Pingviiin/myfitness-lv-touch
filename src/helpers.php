@@ -70,6 +70,9 @@ function extract_name_words(string $filename): array
         'new', 'old', 'vaike', 'vaike2', 'small', 'big', 'large',
         'crop', 'page', 'full', 'thumb', 'thumbnail', 'photo', 'pic',
         'portrait', 'profile', 'img', 'image',
+        'a', 'b', 'c', 'd',
+        'lv', 'lat', 'latvian', 'latviesu',
+        'en', 'eng', 'english',
     ];
     $base  = strtolower(pathinfo($filename, PATHINFO_FILENAME));
     $base  = str_replace(['-', '_', '.'], ' ', $base);
@@ -81,6 +84,31 @@ function extract_name_words(string $filename): array
         return true;
     });
     return array_values($words);
+}
+
+/**
+ * Detect language marker in filename.
+ * Returns 'lv', 'en', or null when no language token is found.
+ */
+function detect_page_language(string $filename): ?string
+{
+    $base = strtolower(pathinfo($filename, PATHINFO_FILENAME));
+    $base = str_replace(['-', '_', '.'], ' ', $base);
+    $words = preg_split('/\s+/', trim($base), -1, PREG_SPLIT_NO_EMPTY);
+    if ($words === false) {
+        return null;
+    }
+
+    foreach ($words as $w) {
+        if (in_array($w, ['lv', 'lat', 'latv', 'latvian', 'latviesu', 'lva'], true)) {
+            return 'lv';
+        }
+        if (in_array($w, ['en', 'eng', 'engl', 'english'], true)) {
+            return 'en';
+        }
+    }
+
+    return null;
 }
 
 /**
@@ -123,41 +151,115 @@ function discover_trainers(): array
         );
     });
 
-    // Pre-compute word sets for all detail-page files
+    // Pre-compute word sets and language markers for all detail-page files
     $pageWordSets = [];
+    $pageLang     = [];
     foreach ($pageFiles as $pf) {
         $pageWordSets[$pf] = extract_name_words($pf);
+        $pageLang[$pf] = detect_page_language($pf);
     }
 
-    $usedPages = [];
+    $usedPagesLv = [];
+    $usedPagesEn = [];
+    $usedPagesFallback = [];
     $trainers  = [];
 
     foreach ($profileFiles as $idx => $profileFile) {
         $profileWords = extract_name_words($profileFile);
-        $bestScore    = 0;
-        $bestPage     = null;
+        $bestScoreLv  = 0;
+        $bestScoreEn  = 0;
+        $bestPageLv   = null;
+        $bestPageEn   = null;
 
         foreach ($pageFiles as $pageFile) {
-            if (isset($usedPages[$pageFile])) {
+            $overlap = count(array_intersect($profileWords, $pageWordSets[$pageFile]));
+
+            if ($pageLang[$pageFile] === 'lv') {
+                if (isset($usedPagesLv[$pageFile])) {
+                    continue;
+                }
+                if ($overlap > $bestScoreLv) {
+                    $bestScoreLv = $overlap;
+                    $bestPageLv  = $pageFile;
+                }
                 continue;
             }
-            $overlap = count(array_intersect($profileWords, $pageWordSets[$pageFile]));
-            if ($overlap > $bestScore) {
-                $bestScore = $overlap;
-                $bestPage  = $pageFile;
+
+            if ($pageLang[$pageFile] === 'en') {
+                if (isset($usedPagesEn[$pageFile])) {
+                    continue;
+                }
+                if ($overlap > $bestScoreEn) {
+                    $bestScoreEn = $overlap;
+                    $bestPageEn  = $pageFile;
+                }
             }
         }
 
-        if ($bestPage !== null) {
-            $usedPages[$bestPage] = true;
+        // Fallback: if language-tagged pages are missing, use untagged pages by best overlap.
+        if ($bestPageLv === null || $bestPageEn === null) {
+            $bestFallback1 = null;
+            $bestFallback2 = null;
+            $bestFallbackScore1 = 0;
+            $bestFallbackScore2 = 0;
+
+            foreach ($pageFiles as $pageFile) {
+                if ($pageLang[$pageFile] !== null) {
+                    continue;
+                }
+                if (isset($usedPagesFallback[$pageFile])) {
+                    continue;
+                }
+
+                $overlap = count(array_intersect($profileWords, $pageWordSets[$pageFile]));
+                if ($overlap > $bestFallbackScore1) {
+                    $bestFallback2 = $bestFallback1;
+                    $bestFallbackScore2 = $bestFallbackScore1;
+                    $bestFallback1 = $pageFile;
+                    $bestFallbackScore1 = $overlap;
+                } elseif ($overlap > $bestFallbackScore2) {
+                    $bestFallback2 = $pageFile;
+                    $bestFallbackScore2 = $overlap;
+                }
+            }
+
+            if ($bestPageLv === null && $bestFallback1 !== null) {
+                $bestPageLv = $bestFallback1;
+                $usedPagesFallback[$bestFallback1] = true;
+            }
+            if ($bestPageEn === null && $bestFallback2 !== null) {
+                $bestPageEn = $bestFallback2;
+                $usedPagesFallback[$bestFallback2] = true;
+            }
+            if ($bestPageEn === null && $bestPageLv === null && $bestFallback1 !== null) {
+                $bestPageLv = $bestFallback1;
+                $usedPagesFallback[$bestFallback1] = true;
+            }
+            if ($bestPageEn === null && $bestPageLv !== null) {
+                // Leave EN missing here; renderer/build fallback reuses LV when needed.
+                $bestScoreEn = $bestScoreLv;
+            }
+            if ($bestPageLv === null && $bestPageEn !== null) {
+                // Leave LV missing here; renderer/build fallback reuses EN when needed.
+                $bestScoreLv = $bestScoreEn;
+            }
+        }
+
+        if ($bestPageLv !== null) {
+            $usedPagesLv[$bestPageLv] = true;
+        }
+        if ($bestPageEn !== null) {
+            $usedPagesEn[$bestPageEn] = true;
         }
 
         $trainers[] = [
             'id'                 => 'trainer' . ($idx + 1),
             'name'               => ucwords(implode(' ', $profileWords)),
             'profile_image'      => $profileFile,
-            'trainer_page_image' => $bestPage,
-            '_match_score'       => $bestScore,
+            'trainer_page_image_lv' => $bestPageLv,
+            'trainer_page_image_en' => $bestPageEn,
+            '_match_score_lv'       => $bestScoreLv,
+            '_match_score_en'       => $bestScoreEn,
         ];
     }
 

@@ -7,9 +7,9 @@ Run from project root.
 - Rebuild all clubs (default):
   - `php build.php`
 - Rebuild selected clubs only:
-  - `php build.php --clubs=Annelinn,Kristiine`
+  - `php build.php --clubs=Saga,Aleja`
 - Rebuild selected clubs and create zip files:
-  - `php build.php --clubs=Annelinn,Kristiine --zip`
+  - `php build.php --clubs=Saga,Aleja --zip`
 
 ## Notes
 

@@ -3,21 +3,33 @@ declare(strict_types=1);
 
 /**
  * Generate an individual trainer detail page.
- * Tapping anywhere on the page returns to index.html.
+ * Page auto-advances after 15 seconds.
  *
- * S3-compatible: no object-fit, pixel-exact layout, inline onclick handler.
+ * S3-compatible: no object-fit, pixel-exact layout, basic ES5 script.
  * Relies on trainer page images pre-processed to SCREEN_W × SCREEN_H by build.php.
  */
-function render_trainer_detail(array $trainer): string
+function render_trainer_detail(array $trainer, string $language, string $nextPage): string
 {
     $sw = defined('SCREEN_W') ? (int) SCREEN_W : 1080;
     $sh = defined('SCREEN_H') ? (int) SCREEN_H : 1920;
 
     $name   = htmlspecialchars((string) $trainer['name'], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $safeNextPage = htmlspecialchars($nextPage, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     $imgTag = '';
-    if ($trainer['trainer_page_image'] !== null) {
+    $pageImage = null;
+    if ($language === 'lv') {
+        $pageImage = $trainer['trainer_page_image_lv'] !== null
+            ? $trainer['trainer_page_image_lv']
+            : $trainer['trainer_page_image_en'];
+    } else {
+        $pageImage = $trainer['trainer_page_image_en'] !== null
+            ? $trainer['trainer_page_image_en']
+            : $trainer['trainer_page_image_lv'];
+    }
+
+    if ($pageImage !== null) {
         $imgSrc = htmlspecialchars(
-            'data/trainer_pages/' . basename($trainer['trainer_page_image']),
+            'data/trainer_pages/' . basename((string) $pageImage),
             ENT_QUOTES | ENT_HTML5,
             'UTF-8'
         );
@@ -50,9 +62,15 @@ html, body {
     display: block;
 }
 </style>
+<script>
+function goNext() {
+    window.location.href = '{$safeNextPage}';
+}
+setTimeout(goNext, 15000);
+</script>
 </head>
 <body>
-<a id="back-link" href="index.html">
+<a id="back-link" href="{$safeNextPage}">
 {$imgTag}
 </a>
 </body>

@@ -4,8 +4,7 @@ declare(strict_types=1);
 /**
  * build.php — MyFitness Touchscreen Trainer Site Builder
  *
- * Default behavior:
- *   - Rebuild all clubs discovered from pictures/*_(HD|4K)
+ * Default behavior: *   - Rebuild all clubs discovered from pictures/*
  *   - Write output into builds/<club>/
  *
  * Club selection:
@@ -73,10 +72,18 @@ function clear_dir_flat(string $dir): void
 
 function parse_club_name_from_folder(string $folder): ?string
 {
-    if (!preg_match('/^(.+?)_(HD|4K)$/i', $folder, $m)) {
+    $trimmed = trim($folder);
+    if ($trimmed === '') {
         return null;
     }
-    return $m[1];
+
+    // Legacy naming support: Club_HD / Club_4K
+    if (preg_match('/^(.+?)_(HD|4K)$/i', $trimmed, $m)) {
+        return trim($m[1]);
+    }
+
+    // Plain folder naming support: ClubName
+    return $trimmed;
 }
 
 function parse_requested_clubs(array $opts): ?array
@@ -96,6 +103,12 @@ function collect_picture_clubs(): array
             continue;
         }
         $folder = $entry->getFilename();
+
+        // Ignore temporary duplicate folders like "Saga - Copy" and "Saga - Copy (2)".
+        if (preg_match('/\s*-\s*copy(?:\s*\(\d+\))?$/i', $folder)) {
+            continue;
+        }
+
         $club   = parse_club_name_from_folder($folder);
         if ($club === null) {
             continue;
@@ -105,6 +118,7 @@ function collect_picture_clubs(): array
             'folder' => $folder,
         ];
     }
+
     ksort($foldersByClub);
     return $foldersByClub;
 }
@@ -138,23 +152,26 @@ function build_from_current_data(string $clubName, string $distDir, ?string $zip
 
     // ── Show match table ──────────────────────────────────────────────────
     $idW      = 10;
-    $fileW    = 36;
+    $fileW    = 32;
     $warnings = 0;
-    printf("  %-{$idW}s  %-{$fileW}s  %s\n", 'ID', 'Profile image', 'Detail page image');
-    echo '  ' . str_repeat('-', $idW) . '  ' . str_repeat('-', $fileW) . '  ' . str_repeat('-', $fileW) . "\n";
+    printf("  %-{$idW}s  %-{$fileW}s  %-{$fileW}s  %s\n", 'ID', 'Profile image', 'Detail LV image', 'Detail EN image');
+    echo '  ' . str_repeat('-', $idW) . '  ' . str_repeat('-', $fileW) . '  ' . str_repeat('-', $fileW) . '  ' . str_repeat('-', $fileW) . "\n";
     foreach ($trainers as $t) {
-        $pageLabel = $t['trainer_page_image'] !== null
-            ? $t['trainer_page_image']
-            : '[NO MATCH — detail page missing]';
-        printf("  %-{$idW}s  %-{$fileW}s  %s\n", $t['id'], $t['profile_image'], $pageLabel);
-        if ($t['trainer_page_image'] === null) {
+        $pageLabelLv = $t['trainer_page_image_lv'] !== null
+            ? $t['trainer_page_image_lv']
+            : '[NO MATCH — LV detail missing]';
+        $pageLabelEn = $t['trainer_page_image_en'] !== null
+            ? $t['trainer_page_image_en']
+            : '[NO MATCH — EN detail missing]';
+        printf("  %-{$idW}s  %-{$fileW}s  %-{$fileW}s  %s\n", $t['id'], $t['profile_image'], $pageLabelLv, $pageLabelEn);
+        if ($t['trainer_page_image_lv'] === null || $t['trainer_page_image_en'] === null) {
             $warnings++;
         }
     }
     echo "\n";
     if ($warnings > 0) {
-        echo "  NOTE: {$warnings} trainer(s) have no matching detail page.\n";
-        echo "        Their card will still appear in the grid but link to a blank page.\n\n";
+        echo "  NOTE: {$warnings} trainer(s) are missing either LV or EN detail page.\n";
+        echo "        Missing language pages will fall back to the available variant.\n\n";
     }
 
     // ── 2. Prepare a clean output directory ───────────────────────────────
@@ -203,9 +220,12 @@ function build_from_current_data(string $clubName, string $distDir, ?string $zip
                 }
             }
 
-            // Trainer page image — letterbox to full SCREEN_W × SCREEN_H
-            if ($t['trainer_page_image'] !== null) {
-                $srcFile = $t['trainer_page_image'];
+            // Trainer page images (LV/EN) — letterbox to full SCREEN_W × SCREEN_H
+            foreach (['trainer_page_image_lv', 'trainer_page_image_en'] as $pageKey) {
+                if ($t[$pageKey] === null) {
+                    continue;
+                }
+                $srcFile = (string) $t[$pageKey];
                 $srcPath = $distDir . '/data/trainer_pages/' . basename($srcFile);
                 $dstFile = preg_replace('/\.(png|gif|webp)$/i', '.jpg', $srcFile);
                 $dstPath = $distDir . '/data/trainer_pages/' . basename($dstFile);
@@ -214,7 +234,7 @@ function build_from_current_data(string $clubName, string $distDir, ?string $zip
                         if ($dstPath !== $srcPath) {
                             @unlink($srcPath);
                         }
-                        $trainers[$i]['trainer_page_image'] = $dstFile;
+                        $trainers[$i][$pageKey] = $dstFile;
                         $processed++;
                     } else {
                         $failed++;
@@ -229,28 +249,28 @@ function build_from_current_data(string $clubName, string $distDir, ?string $zip
         }
     }
 
-    // ── Header image ──────────────────────────────────────────────────────
-    $fontPath  = ASSETS . '/MyriadPro-Regular.otf';
-    $hFontSz  = (int) round(SCREEN_W * 0.06);
-    $hPadV    = (int) round(SCREEN_W * 0.04);
-    $hdrImgW  = (int) round(SCREEN_W * 1);
-    if (generate_header_image('Personaaltreenerid', $fontPath, $distDir . '/assets/header.jpg', $hdrImgW, $hFontSz, $hPadV)) {
-        echo "        + header.jpg\n";
-    } else {
-        echo "  WARNING: Could not generate header.jpg (GD+FreeType or font unavailable).\n";
-        echo "           The header <h1> text fallback will be used instead.\n";
-    }
-
     // ── 5. Generate HTML files ────────────────────────────────────────────
     echo "  [4/5] Generating HTML ...\n";
 
-    file_put_contents($distDir . '/index.html', render_index($trainers, $gymName));
-    echo "        + index.html\n";
+    $trainerCount = count($trainers);
 
-    foreach ($trainers as $t) {
-        $filename = $t['id'] . '.html';
-        file_put_contents($distDir . "/{$filename}", render_trainer_detail($t));
-        echo "        + {$filename}\n";
+    for ($i = 0; $i < $trainerCount; $i++) {
+        $indexFile = $i === 0 ? 'index.html' : ('index_' . ($i + 1) . '.html');
+        $nextDetail = $trainers[$i]['id'] . '_lv.html';
+        file_put_contents($distDir . '/' . $indexFile, render_index($trainers, $gymName, $nextDetail));
+        echo "        + {$indexFile}\n";
+    }
+
+    foreach ($trainers as $i => $t) {
+        $lvFile = $t['id'] . '_lv.html';
+        $enFile = $t['id'] . '_en.html';
+        $nextGrid = ($i + 1) < $trainerCount ? ('index_' . ($i + 2) . '.html') : 'index.html';
+
+        file_put_contents($distDir . "/{$lvFile}", render_trainer_detail($t, 'lv', $enFile));
+        echo "        + {$lvFile}\n";
+
+        file_put_contents($distDir . "/{$enFile}", render_trainer_detail($t, 'en', $nextGrid));
+        echo "        + {$enFile}\n";
     }
 
     // ── 6. Bundle into zip (optional) ────────────────────────────────────

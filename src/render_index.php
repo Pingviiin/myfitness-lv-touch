@@ -11,7 +11,7 @@ declare(strict_types=1);
  *  - No position:fixed (unreliable on S3) — footer uses position:absolute
  *  - Float-based grid (works on IE6+ / old WebKit)
  */
-function render_index(array $trainers, string $gymName): string
+function render_index(array $trainers, string $gymName, string $nextPage): string
 {
     $count = count($trainers);
     $cols  = $count > 6 ? 3 : 2;
@@ -31,11 +31,16 @@ function render_index(array $trainers, string $gymName): string
     $logoBottom = (int) round($sh * 0.00);     // logo distance from bottom of screen
     $logoRight = (int) round($sw * 0.01);       // logo distance from right edge of screen
 
+    $safeNextPage = htmlspecialchars($nextPage, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
     // ── Trainer cards ─────────────────────────────────────────────────────
     $cards = '';
     foreach ($trainers as $t) {
         $imgSrc = htmlspecialchars('data/profiles/' . basename($t['profile_image']), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $href   = htmlspecialchars($t['id'] . '.html', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $entryDetail = $t['trainer_page_image_lv'] !== null
+            ? $t['id'] . '_lv.html'
+            : ($t['trainer_page_image_en'] !== null ? $t['id'] . '_en.html' : 'index.html');
+        $href   = htmlspecialchars($entryDetail, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $alt    = htmlspecialchars((string) $t['name'], ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
         $cards .= <<<CARD
@@ -107,11 +112,17 @@ body {
     display: block;
 }
 </style>
+<script>
+function goNext() {
+    window.location.href = '{$safeNextPage}';
+}
+setTimeout(goNext, 15000);
+</script>
 </head>
 <body>
 
 <div id="page">
-<img id="header-img" src="assets/header.jpg" alt="Personaaltreenerid">
+<img id="header-img" src="assets/banner.jpg" alt="Personaaltreenerid">
 
 <div id="grid">
     {$cards}

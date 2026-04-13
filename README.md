@@ -15,4 +15,3 @@ Run from project root.
 
 - Default output is written to `builds/<club>`.
 - Zip files are created only when `--zip` is used in batch mode.
-- `build_all.php` is kept as a compatibility wrapper and forwards to `build.php`.

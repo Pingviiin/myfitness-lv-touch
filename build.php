@@ -16,11 +16,12 @@ declare(strict_types=1);
  * Requirements: PHP 7.1+, ext-zip
  *
  * Usage:
- *   php build.php [--clubs=Annelinn,Kristiine] [--zip]
+ *   php build.php [--clubs=Annelinn,Kristiine] [--zip] [--deploy]
  *
  * Options:
  *   --clubs=...     Comma-separated club names for batch mode.
  *   --zip           Also create <club>.zip in project root (batch mode).
+ *   --deploy        Mirror each finished build to the configured FTP server.
  */
 
 define('ROOT',    __DIR__);
@@ -36,6 +37,7 @@ define('SCREEN_H', 1920);  // portrait display height (px)
 
 // ── Includes ─────────────────────────────────────────────────────────────────
 require_once __DIR__ . '/src/helpers.php';
+require_once __DIR__ . '/src/deploy_ftp.php';
 require_once __DIR__ . '/src/render_index.php';
 require_once __DIR__ . '/src/render_trainer.php';
 
@@ -301,6 +303,17 @@ function run_batch(array $opts): int
 
     $requested = parse_requested_clubs($opts);
     $zipBuilds = isset($opts['zip']);
+    $deployBuilds = isset($opts['deploy']);
+    $deployConfig = null;
+
+    if ($deployBuilds) {
+        try {
+            $deployConfig = resolve_ftp_deploy_config($opts, ROOT);
+        } catch (RuntimeException $e) {
+            echo "FTP deploy configuration error: " . $e->getMessage() . "\n";
+            return 1;
+        }
+    }
 
     $selected = [];
     if ($requested === null) {
@@ -327,6 +340,10 @@ function run_batch(array $opts): int
     echo "  Selected " . count($selected) . " club(s): " . implode(', ', array_map(function (array $c): string { return $c['club']; }, $selected)) . "\n";
     echo "  Output   : " . BUILDS . "/<club>\n";
     echo "  Zip      : " . ($zipBuilds ? 'enabled' : 'disabled') . "\n\n";
+    if ($deployBuilds) {
+        echo "  Deploy   : enabled\n";
+        echo "  Remote   : " . $deployConfig['remote_root_dir'] . "/<club>/touch\n\n";
+    }
 
     $errors = [];
 
@@ -347,6 +364,18 @@ function run_batch(array $opts): int
         if ($code !== 0) {
             $errors[] = $clubName;
             echo "  [ERROR] build failed for {$clubName} (exit {$code})\n\n";
+            continue;
+        }
+
+        if ($deployBuilds) {
+            echo "  [DEPLOY] Uploading {$clubName} to FTP ...\n";
+            try {
+                $remoteTarget = deploy_local_directory_to_ftp($clubOut, $deployConfig);
+                echo "  [DEPLOY] Done: {$remoteTarget}\n\n";
+            } catch (RuntimeException $e) {
+                $errors[] = $clubName . ' (deploy)';
+                echo "  [DEPLOY][ERROR] {$clubName}: " . $e->getMessage() . "\n\n";
+            }
         }
     }
 
@@ -362,11 +391,36 @@ function run_batch(array $opts): int
 
 function main(): int
 {
-    $opts = getopt('', ['help', 'clubs:', 'zip']);
+    $opts = getopt('', [
+        'help',
+        'clubs:',
+        'zip',
+        'deploy',
+        'deploy-config:',
+        'ftp-host:',
+        'ftp-user:',
+        'ftp-pass:',
+        'ftp-root:',
+        'ftp-port:',
+        'ftp-timeout:',
+        'ftp-secure',
+        'ftp-passive',
+        'ftp-no-passive',
+        'ftp-insecure',
+    ]);
 
     if (isset($opts['help'])) {
         echo "Usage:\n";
-        echo "  php build.php [--clubs=Annelinn,Kristiine] [--zip]\n";
+        echo "  php build.php [--clubs=Annelinn,Kristiine] [--zip] [--deploy]\n";
+        echo "\n";
+        echo "FTP deploy options:\n";
+        echo "  --deploy-config=path   Optional config file (default: deploy.local.php)\n";
+        echo "  --ftp-host=host        FTP server host\n";
+        echo "  --ftp-user=user        FTP username\n";
+        echo "  --ftp-pass=pass        FTP password\n";
+        echo "  --ftp-root=path        Remote root folder for club builds\n";
+        echo "  --ftp-port=21          FTP port\n";
+        echo "  --ftp-secure           Use FTPS when available\n";
         return 0;
     }
 

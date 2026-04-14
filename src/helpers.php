@@ -112,11 +112,11 @@ function detect_page_language(string $filename): ?string
 }
 
 /**
- * Scan data/profiles/ and data/trainer_pages/, match each profile image to
+ * Scan profile and trainer-page directories, match each profile image to
  * the best-fitting detail image by word-overlap score (greedy best-first),
  * and return trainer records with assigned IDs (trainer1, trainer2, …).
  */
-function discover_trainers(): array
+function discover_trainers(string $profilesDir, string $trainerPagesDir): array
 {
     $supported = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
 
@@ -136,8 +136,8 @@ function discover_trainers(): array
         return $files;
     };
 
-    $profileFiles = $scanImages(DATA . '/profiles');
-    $pageFiles    = $scanImages(DATA . '/trainer_pages');
+    $profileFiles = $scanImages($profilesDir);
+    $pageFiles    = $scanImages($trainerPagesDir);
 
     if (empty($profileFiles)) {
         return [];

@@ -25,12 +25,9 @@ declare(strict_types=1);
  */
 
 define('ROOT',    __DIR__);
-define('DATA',    ROOT . '/data');
 define('ASSETS',  ROOT . '/assets');
 define('PICTURES', ROOT . '/pictures');
 define('BUILDS',   ROOT . '/builds');
-define('DATA_PROF', DATA . '/profiles');
-define('DATA_PAGES', DATA . '/trainer_pages');
 
 define('SCREEN_W', 1080);   // portrait display width  (px)
 define('SCREEN_H', 1920);  // portrait display height (px)
@@ -42,35 +39,6 @@ require_once __DIR__ . '/src/render_index.php';
 require_once __DIR__ . '/src/render_trainer.php';
 
 // ── Main ─────────────────────────────────────────────────────────────────────
-
-function copy_dir_flat(string $src, string $dst): void
-{
-    if (!is_dir($src)) {
-        return;
-    }
-    if (!is_dir($dst)) {
-        mkdir($dst, 0755, true);
-    }
-    foreach (new DirectoryIterator($src) as $item) {
-        if ($item->isDot() || $item->isDir()) {
-            continue;
-        }
-        copy($item->getPathname(), $dst . DIRECTORY_SEPARATOR . $item->getFilename());
-    }
-}
-
-function clear_dir_flat(string $dir): void
-{
-    if (!is_dir($dir)) {
-        return;
-    }
-    foreach (new DirectoryIterator($dir) as $item) {
-        if ($item->isDot() || $item->isDir()) {
-            continue;
-        }
-        unlink($item->getPathname());
-    }
-}
 
 function parse_club_name_from_folder(string $folder): ?string
 {
@@ -125,7 +93,7 @@ function collect_picture_clubs(): array
     return $foldersByClub;
 }
 
-function build_from_current_data(string $clubName, string $distDir, ?string $zipOut): int
+function build_from_club_folder(string $clubName, string $clubDir, string $distDir, ?string $zipOut): int
 {
     $hr = str_repeat('-', 44);
     echo "\n  Building Club: {$clubName}\n  {$hr}\n\n";
@@ -135,17 +103,19 @@ function build_from_current_data(string $clubName, string $distDir, ?string $zip
         return 1;
     }
 
-    $gymNameFile = DATA . '/gym_name.txt';
+    $profilesDir = $clubDir . '/profiles';
+    $trainerPagesDir = $clubDir . '/trainer_pages';
+    $gymNameFile = $clubDir . '/gym_name.txt';
     $gymName     = file_exists($gymNameFile)
         ? trim((string) file_get_contents($gymNameFile))
-        : 'MyFitness';
+        : $clubName;
 
-    $trainers = discover_trainers();
+    $trainers = discover_trainers($profilesDir, $trainerPagesDir);
 
     if (empty($trainers)) {
-        echo "  ERROR: No image files found in data/profiles/\n";
-        echo "  Hint:  Copy your trainer profile images (JPG/PNG) into data/profiles/\n";
-        echo "         and matching detail images into data/trainer_pages/\n\n";
+        echo "  ERROR: No image files found in {$profilesDir}\n";
+        echo "  Hint:  Put trainer profile images (JPG/PNG) in {$profilesDir}\n";
+        echo "         and matching detail images in {$trainerPagesDir}\n\n";
         return 1;
     }
 
@@ -186,8 +156,8 @@ function build_from_current_data(string $clubName, string $distDir, ?string $zip
     // ── 3. Copy static assets and trainer images ─────────────────────────
     echo "  [2/5] Copying assets and images ...\n";
     rcopy(ASSETS,                  $distDir . '/assets');
-    rcopy(DATA . '/profiles',      $distDir . '/data/profiles');
-    rcopy(DATA . '/trainer_pages', $distDir . '/data/trainer_pages');
+    rcopy($profilesDir,            $distDir . '/data/profiles');
+    rcopy($trainerPagesDir,        $distDir . '/data/trainer_pages');
 
     // ── 4. Pre-process images (letterbox to exact px, convert to JPEG) ──
     echo "  [3/5] Processing images ...\n";
@@ -354,13 +324,9 @@ function run_batch(array $opts): int
         $clubOut  = BUILDS . DIRECTORY_SEPARATOR . $clubName;
         $zipOut   = $zipBuilds ? (ROOT . DIRECTORY_SEPARATOR . $clubName . '.zip') : null;
 
-        echo "  Preparing data for {$clubName} from {$folder}\n";
-        clear_dir_flat(DATA_PROF);
-        clear_dir_flat(DATA_PAGES);
-        copy_dir_flat($clubDir . '/profiles',      DATA_PROF);
-        copy_dir_flat($clubDir . '/trainer_pages', DATA_PAGES);
+        echo "  Preparing build for {$clubName} from {$folder}\n";
 
-        $code = build_from_current_data($clubName, $clubOut, $zipOut);
+        $code = build_from_club_folder($clubName, $clubDir, $clubOut, $zipOut);
         if ($code !== 0) {
             $errors[] = $clubName;
             echo "  [ERROR] build failed for {$clubName} (exit {$code})\n\n";

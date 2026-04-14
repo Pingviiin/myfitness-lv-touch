@@ -1,10 +1,13 @@
 <?php
 declare(strict_types=1);
 
-function load_ftp_deploy_config(string $configPath): array
+function load_ftp_deploy_config(string $rootDir): array
 {
-    if ($configPath === '' || !file_exists($configPath)) {
-        return [];
+    $configPath = rtrim($rootDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'deploy.local.php';
+    if (!file_exists($configPath)) {
+        throw new RuntimeException(
+            'Missing deploy.local.php. Set host, username, password, and remote_root_dir in deploy.local.php.'
+        );
     }
 
     $config = require $configPath;
@@ -64,33 +67,29 @@ function to_bool($value, bool $default = false): bool
     return $filtered === null ? $default : $filtered;
 }
 
-function resolve_ftp_deploy_config(array $options, string $rootDir): array
+function resolve_ftp_deploy_config(string $rootDir): array
 {
-    $configPath = isset($options['deploy-config'])
-        ? (string) $options['deploy-config']
-        : ($rootDir . DIRECTORY_SEPARATOR . 'deploy.local.php');
-
-    $fileConfig = load_ftp_deploy_config($configPath);
+    $fileConfig = load_ftp_deploy_config($rootDir);
 
     $resolved = [
-        'host' => (string) ($options['ftp-host'] ?? ($fileConfig['host'] ?? '')),
-        'username' => (string) ($options['ftp-user'] ?? ($fileConfig['username'] ?? '')),
-        'password' => (string) ($options['ftp-pass'] ?? ($fileConfig['password'] ?? '')),
-        'remote_root_dir' => (string) ($options['ftp-root'] ?? ($fileConfig['remote_root_dir'] ?? ($fileConfig['remote_base_dir'] ?? '/'))),
-        'port' => (int) ($options['ftp-port'] ?? ($fileConfig['port'] ?? 21)),
-        'timeout' => (int) ($options['ftp-timeout'] ?? ($fileConfig['timeout'] ?? 90)),
-        'secure' => isset($options['ftp-secure'])
-            ? true
-            : (isset($options['ftp-insecure']) ? false : to_bool($fileConfig['secure'] ?? false)),
-        'passive' => isset($options['ftp-no-passive'])
-            ? false
-            : (isset($options['ftp-passive']) ? true : to_bool($fileConfig['passive'] ?? true, true)),
+        'host' => trim((string) ($fileConfig['host'] ?? '')),
+        'username' => trim((string) ($fileConfig['username'] ?? '')),
+        'password' => (string) ($fileConfig['password'] ?? ''),
+        'remote_root_dir' => trim((string) ($fileConfig['remote_root_dir'] ?? '')),
+        'port' => (int) ($fileConfig['port'] ?? 21),
+        'timeout' => (int) ($fileConfig['timeout'] ?? 90),
+        'secure' => to_bool($fileConfig['secure'] ?? false),
+        'passive' => to_bool($fileConfig['passive'] ?? true, true),
     ];
 
-    if ($resolved['host'] === '' || $resolved['username'] === '' || $resolved['password'] === '') {
+    if (
+        $resolved['host'] === '' ||
+        $resolved['username'] === '' ||
+        $resolved['password'] === '' ||
+        $resolved['remote_root_dir'] === ''
+    ) {
         throw new RuntimeException(
-            'FTP deployment requires host, username, and password. ' .
-            'Provide them in deploy.local.php or via --ftp-host/--ftp-user/--ftp-pass.'
+            'FTP configuration is incomplete. Set host, username, password, and remote_root_dir in deploy.local.php.'
         );
     }
 

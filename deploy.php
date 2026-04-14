@@ -4,7 +4,7 @@ declare(strict_types=1);
 define('ROOT', __DIR__);
 define('BUILDS', ROOT . '/builds');
 
-require_once __DIR__ . '/src/deploy_ftp.php';
+require_once ROOT . '/src/deploy_ftp.php';
 
 function parse_requested_clubs(array $opts): ?array
 {
@@ -43,37 +43,19 @@ function main(): int
     $opts = getopt('', [
         'help',
         'clubs:',
-        'deploy-config:',
-        'ftp-host:',
-        'ftp-user:',
-        'ftp-pass:',
-        'ftp-root:',
-        'ftp-port:',
-        'ftp-timeout:',
-        'ftp-secure',
-        'ftp-passive',
-        'ftp-no-passive',
-        'ftp-insecure',
     ]);
 
     if (isset($opts['help'])) {
         echo "Usage:\n";
         echo "  php deploy.php [--clubs=Saga,Aleja]\n";
         echo "\n";
-        echo "FTP deploy options:\n";
-        echo "  --deploy-config=path   Optional config file (default: deploy.local.php)\n";
-        echo "  --ftp-host=host        FTP server host\n";
-        echo "  --ftp-user=user        FTP username\n";
-        echo "  --ftp-pass=pass        FTP password\n";
-        echo "  --ftp-root=path        Remote root folder for club builds\n";
-        echo "  --ftp-port=21          FTP port\n";
-        echo "  --ftp-secure           Use FTPS when available\n";
+        echo "FTP settings are loaded from deploy.local.php only.\n";
         return 0;
     }
 
     $deployConfig = null;
     try {
-        $deployConfig = resolve_ftp_deploy_config($opts, ROOT);
+        $deployConfig = resolve_ftp_deploy_config(ROOT);
     } catch (RuntimeException $e) {
         echo "FTP deploy configuration error: " . $e->getMessage() . "\n";
         return 1;

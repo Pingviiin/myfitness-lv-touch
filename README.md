@@ -17,7 +17,7 @@ Run from project root.
 
 ## FTP Deployment
 
-Copy `deploy.local.php.example` to `deploy.local.php` and fill in your FTP credentials.
+Create `deploy.local.php` in the project root and fill in your FTP credentials.
 
 Required settings:
 
@@ -33,7 +33,7 @@ Optional settings:
 - `secure` (`true` to use FTPS when available)
 - `passive` (`true` by default)
 
-You can also override these values from the command line with `--ftp-host`, `--ftp-user`, `--ftp-pass`, `--ftp-root`, `--ftp-port`, `--ftp-timeout`, and `--ftp-secure`.
+FTP settings are always loaded from `deploy.local.php`.
 
 ## Notes
 
